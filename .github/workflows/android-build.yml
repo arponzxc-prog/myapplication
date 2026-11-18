@@ -1,0 +1,120 @@
+name: Android CI Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build Type (debug, release, bundle)'
+        required: true
+        default: 'debug'
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Java JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Accept Android SDK Licenses
+        run: yes | sdkmanager --licenses > /dev/null || true
+
+      - name: Setup Gradle (bootstrap)
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Detect project directory
+        id: detect-project
+        run: |
+          PROJECT_DIR="."
+          if [ ! -f settings.gradle ] && [ ! -f settings.gradle.kts ]; then
+            FOUND=$(find . -maxdepth 3 \( -name settings.gradle -o -name settings.gradle.kts \) -not -path "*/.*" -exec dirname {} \; | head -n 1)
+            if [ -n "$FOUND" ]; then PROJECT_DIR="$FOUND"; fi
+          fi
+          echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
+          echo "=== Project dir: $PROJECT_DIR ==="
+          ls -la "$PROJECT_DIR"
+          echo "=== Gradle build files ==="
+          find "$PROJECT_DIR" -maxdepth 3 \( -name "build.gradle" -o -name "build.gradle.kts" -o -name "settings.gradle*" \) -not -path "*/build/*"
+
+      - name: Prepare Gradle wrapper (project's own Gradle version)
+        working-directory: ${{ steps.detect-project.outputs.project_dir }}
+        run: |
+          if [ ! -f gradlew ] || [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
+            GV=""
+            if [ -f gradle/wrapper/gradle-wrapper.properties ]; then
+              GV=$(sed -n 's#.*gradle-\([0-9][0-9.]*\)-\(bin\|all\)\.zip.*#\1#p' gradle/wrapper/gradle-wrapper.properties | head -n 1)
+            fi
+            GV=${GV:-8.10.2}
+            echo "Generating Gradle wrapper for version $GV"
+            rm -rf /tmp/wrap && mkdir -p /tmp/wrap
+            echo "" > /tmp/wrap/settings.gradle
+            (cd /tmp/wrap && gradle wrapper --gradle-version "$GV")
+            mkdir -p gradle/wrapper
+            cp /tmp/wrap/gradlew ./gradlew
+            cp /tmp/wrap/gradle/wrapper/gradle-wrapper.jar gradle/wrapper/gradle-wrapper.jar
+            if [ ! -f gradle/wrapper/gradle-wrapper.properties ]; then
+              cp /tmp/wrap/gradle/wrapper/gradle-wrapper.properties gradle/wrapper/
+            fi
+          fi
+          chmod +x gradlew
+          ./gradlew --version
+
+      - name: Create signing keystores if missing
+        working-directory: ${{ steps.detect-project.outputs.project_dir }}
+        run: |
+          if [ ! -f debug.keystore ]; then
+            keytool -genkeypair -v -keystore debug.keystore -storepass android -alias androiddebugkey \
+              -keypass android -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          if [ ! -f my-upload-key.jks ]; then
+            keytool -genkeypair -v -keystore my-upload-key.jks -storepass android -alias upload \
+              -keypass android -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Upload,O=Nexa,C=US"
+          fi
+
+      - name: Build with Gradle
+        working-directory: ${{ steps.detect-project.outputs.project_dir }}
+        env:
+          BUILD_TYPE: ${{ github.event.inputs.build_type }}
+          STORE_PASSWORD: android
+          KEY_PASSWORD: android
+        run: |
+          case "$BUILD_TYPE" in
+            release) TASK=assembleRelease ;;
+            bundle)  TASK=bundleRelease ;;
+            *)       TASK=assembleDebug ;;
+          esac
+          echo "Running ./gradlew $TASK"
+          ./gradlew "$TASK" --stacktrace --no-daemon -Dorg.gradle.jvmargs="-Xmx3072m -XX:MaxMetaspaceSize=512m"
+
+      - name: Upload APK Artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android-APK
+          path: |
+            **/build/outputs/apk/**/*.apk
+            **/build/outputs/bundle/**/*.aab
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload Build Reports on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Build-Reports-Failure
+          path: |
+            **/build/reports/
+          if-no-files-found: ignore
+          retention-days: 3

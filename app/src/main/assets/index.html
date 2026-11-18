@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>MyApplication</title>
+        <style>
+            body {
+                font-family: system-ui, -apple-system, sans-serif;
+                background: #0f172a;
+                color: #f8fafc;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                height: 100vh;
+                margin: 0;
+                text-align: center;
+                padding: 20px;
+            }
+            .card {
+                background: #1e293b;
+                padding: 30px;
+                border-radius: 16px;
+                box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+                max-width: 400px;
+                width: 100%;
+                border: 1px solid #334155;
+            }
+            h1 { color: #38bdf8; margin-bottom: 10px; font-size: 24px; }
+            p { color: #94a3b8; font-size: 15px; line-height: 1.5; }
+            button {
+                background: #38bdf8;
+                color: #0f172a;
+                border: none;
+                padding: 12px 24px;
+                font-size: 16px;
+                border-radius: 8px;
+                cursor: pointer;
+                margin-top: 15px;
+                font-weight: 700;
+            }
+            button:active { background: #0ea5e9; }
+            #msg { margin-top: 15px; font-weight: bold; color: #4ade80; }
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <h1>MyApplication</h1>
+            <p>Single File HTML + CSS + JS App created with Nexa IDE!</p>
+            <button onclick="onBtnClick()">Tap Me</button>
+            <p id="msg"></p>
+        </div>
+
+        <script>
+            function onBtnClick() {
+                document.getElementById('msg').innerText = 'Hello from JavaScript! Single-file app working successfully.';
+            }
+        </script>
+    </body>
+</html>
